@@ -44,11 +44,35 @@ Claude Desktop을 쓰는 경우 `%APPDATA%/Claude/claude_desktop_config.json`의
 
 > 이 수집기를 24시간마다 실행하도록 예약해 줘.
 
+> pocket-crawler로 이 인스타 링크의 작성자 프로필과 최근 게시물 30개를 수집하고, 계정 포지셔닝·주제·게시 빈도·반응이 높은 콘텐츠·개선점을 분석해 줘: https://www.instagram.com/p/게시물코드/
+
+## Instagram 링크 하나로 분석
+
+`analyze-instagram`에 프로필, 게시물(`/p/`), 릴스(`/reel/`) URL 하나를 넣습니다. 게시물 링크라면 작성자를 확인한 뒤 프로필 격자를 스크롤하고 각 게시물로 들어갑니다. 기본 요청은 30개이며 `maxPosts`는 1~30입니다. 고정 게시물에 대비해 최대 3개 후보를 추가 확인하고 날짜순으로 최대 30개를 남깁니다. 수집은 수 분 걸릴 수 있습니다.
+
+```json
+{"url":"https://www.instagram.com/p/DedrPhOCX9Q/","maxPosts":30}
+```
+
+1. `analyze-instagram` → 실행 ID 반환
+2. `get-actor-run` → 완료 또는 부분 완료 확인
+3. `get-instagram-analysis` → 프로필, 캡션, 게시 시각, 형식, 확인 가능한 좋아요·댓글·조회수, 해시태그, 평균 지표, 반응 상위 게시물, 출처와 수집 범위 반환
+4. Codex 또는 Claude가 이 자료를 근거로 종합 분석 작성
+
+별도 LLM API 키는 필요하지 않습니다. 서버는 수집과 통계를 담당하고 연결한 AI가 정성 분석을 작성합니다. 이미지·영상 자체의 시청, OCR, 음성 전사, 댓글 본문 수집은 포함하지 않습니다. 릴스는 프로필 격자에 나타나는 항목을 포함하며 별도 릴스 탭·스토리는 수집하지 않습니다. 숨겨진 지표는 `null`로 유지하며 실제 0과 구분합니다.
+
+Instagram은 비로그인 접근이나 추가 스크롤을 제한할 수 있습니다. 이때 실제 수집한 수와 누락 이유를 `partial` 결과로 반환하며 30개를 확보했다고 표시하지 않습니다. `coverage.latestRequestedPostsVerified`는 접근한 프로필 격자 후보와 날짜를 기준으로 요청한 개수를 확보했는지를 뜻하며, 플랫폼의 모든 게시물을 빠짐없이 확인했다는 보장은 아닙니다. 부분 표본에는 오래된 고정 게시물이 섞일 수 있어 전체 평균이나 게시 간격을 계정의 일반적인 성과로 단정하면 안 됩니다.
+
+로그인이 필요하면 `instagram-session`의 `action: "login"`으로 전용 브라우저를 열고 직접 로그인하세요. 비밀번호·인증코드를 AI에 전달하지 않습니다. 로그인 후 창이 닫히면 `action: "status"`로 저장 여부를 확인하고 수집을 다시 실행합니다. 세션은 `data/mcp/instagram-session/`에 로컬 저장되며 Git에서 제외됩니다. `action: "clear"`로 삭제할 수 있습니다. 비공개 계정, 본인 확인 화면, 요청 제한을 감지하면 중단합니다.
+
 ## MCP 도구
 
 | 도구 | 하는 일 |
 | --- | --- |
 | `get-server-info` | 서버 기능·저장 위치·브라우저 준비 상태 확인 |
+| `analyze-instagram` | 링크에서 작성자·프로필·최근 게시물 최대 30개 수집 |
+| `get-instagram-analysis` | 수집 범위, 통계, 출처와 종합 분석용 근거 조회 |
+| `instagram-session` | 전용 수동 로그인·세션 상태·삭제 |
 | `search-actors` | 내장 및 저장된 수집기 검색 |
 | `fetch-actor-details` | 입력 규격·기본값·예시 확인 |
 | `save-actor` | 검증한 설정을 재사용 가능한 `local/이름` 수집기로 저장 |
@@ -73,7 +97,7 @@ Claude Desktop을 쓰는 경우 `%APPDATA%/Claude/claude_desktop_config.json`의
 - **links**: 중복 제거된 링크 텍스트·절대 URL
 - **custom**: 반복 항목 CSS 선택자와 필드별 텍스트·속성 추출
 
-모두 `engine: "http"` 또는 `engine: "browser"`를 지원합니다. JavaScript 렌더링이 필요한 사이트는 `browser`를 사용하세요. Windows의 설치된 Edge/Chrome을 감지하며, 없으면 다음 명령으로 Chromium을 준비합니다.
+위 세 수집기는 `engine: "http"` 또는 `engine: "browser"`를 지원합니다. 별도의 **instagram** 수집기는 항상 브라우저를 사용하며 `call-actor`로도 실행할 수 있습니다. JavaScript 렌더링이 필요한 사이트는 `browser`를 사용하세요. Windows의 설치된 Edge/Chrome을 감지하며, 없으면 다음 명령으로 Chromium을 준비합니다.
 
 ```sh
 npm run install:browser
@@ -97,9 +121,9 @@ Codex와 Claude가 동일한 프로젝트의 `mcp-server.js`를 실행하면 `da
 
 결과는 원본 URL과 수집 시각을 포함합니다. `get-dataset-items`는 컨텍스트 크기를 위해 필드를 기본 2,000자로 제한하고 잘린 필드를 표시합니다. `export-dataset`은 저장된 전체 결과를 `data/mcp/exports`에 기록합니다. 실행 중 내보내기는 해당 시점의 결과만 포함합니다.
 
-기본 제한: 시작 URL 20개, 실행당 100페이지·5,000개 결과, 저장된 실행 200개, 예약 30개, 맞춤 수집기 100개. 수집 요청은 최소 0.5초 간격이며 기본적으로 robots.txt를 따릅니다. 로컬·사설 네트워크 주소는 수집하지 않습니다.
+일반 수집기 제한: 시작 URL 20개, 실행당 100페이지·5,000개 결과. 저장된 실행 200개, 예약 30개, 맞춤 수집기 100개. 일반 수집 요청은 최소 0.5초 간격이며 기본적으로 robots.txt를 따릅니다. Instagram 수집기는 브라우저 화면을 탐색하며 게시물 사이 2초 이상 대기하고, 별도의 robots.txt 검사를 적용하지 않습니다. 로컬·사설 네트워크 주소는 수집하지 않습니다.
 
-로그인, CAPTCHA, 프록시 네트워크, 무한 스크롤·상호작용 자동화, PDF/OCR, SNS별 전문 수집기는 포함하지 않습니다. 사이트에 따라 CSS 설정 또는 전용 수집기 개발이 필요합니다. 수집된 페이지 내용은 외부 데이터이며 AI 지시로 취급하면 안 됩니다.
+Instagram 전용 수집·수동 로그인·제한된 스크롤을 지원합니다. 다른 사이트의 로그인·상호작용 자동화, CAPTCHA 해결, 프록시 네트워크, PDF/OCR은 포함하지 않습니다. 다른 사이트는 CSS 설정 또는 전용 수집기 개발이 필요합니다. 수집된 페이지 내용은 외부 데이터이며 AI 지시로 취급하면 안 됩니다.
 
 ## 개발과 테스트
 
@@ -108,11 +132,13 @@ npm run check
 npm test
 # 실제 공개 웹페이지를 MCP로 수집하는 별도 검사
 npm run test:mcp-live
+# 사용자가 지정한 Instagram 계정을 실제 수집해 로컬 DB에 보관하는 선택 검사
+npm run test:instagram-live -- "https://www.instagram.com/p/게시물코드/" 30
 ```
 
 자동 테스트는 임시 DB를 사용하며 실제 사용자 데이터를 바꾸지 않습니다. MCP 초기화, 도구 검색, 입력 오류, 수집기 저장, 실행, 데이터셋 읽기, 내보내기, 예약, 두 프로세스 동시 접근, 취소와 중단 복구를 검증합니다.
 
-2026-10-17 검증: 전체 테스트 12개 통과. 실제 stdio MCP의 `call-actor` → `get-dataset-items` 호출로 example.com을 HTML·브라우저 방식 모두 수집했습니다. 이 개발 PC에서는 Codex 사용자 설정의 활성 등록과 Claude Code의 `Connected` 상태를 확인했습니다. 이미 열려 있는 Codex 채팅에는 도구가 소급 추가되지 않았으므로 앱 또는 MCP 연결을 다시 시작해야 합니다.
+2026-10-17 v0.3.0 검증: 자동 테스트 21개 통과. Instagram 테스트는 링크 정규화, JSON/DOM 파싱, 고정 게시물 포함 후보에서 최신 30개 선택, 중복 제거, 접근 제한 시 부분 결과 보존, 취소, 누락 지표 처리와 MCP 분석 호출을 확인합니다. 실제 사용자 제공 링크로 작성자 프로필과 게시물 12개 수집에 성공했으며, 비로그인 접근에서 추가 게시물이 나타나지 않아 `partial`로 기록했습니다. 실제 Instagram에서 30개 전체 수집과 로그인 후 수집은 아직 검증하지 않았습니다. 이전 버전에서는 example.com의 HTML·브라우저 수집 및 이 PC의 Codex 활성 등록·Claude Code 연결을 확인했습니다. 변경된 도구 목록을 불러오려면 앱 또는 MCP 연결을 다시 시작하세요.
 
 기존 웹 화면은 선택 기능으로만 남아 있습니다. 필요하면 `npm run ui`로 실행하며 이전 JSON 기록을 사용합니다. MCP의 SQLite 결과와 웹 화면의 JSON 기록은 서로 별개입니다. 기본 사용 경로는 MCP입니다. 웹 화면 설명은 `WEB-UI.md`를 참고하세요.
 

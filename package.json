@@ -1,6 +1,6 @@
 {
   "name": "pocket-crawler",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Personal local scraping MCP server for Codex and Claude",
@@ -12,11 +12,12 @@
     "mcp": "node mcp-server.js",
     "config": "node scripts/connection-config.mjs",
     "test:mcp-live": "node tests/mcp-live.mjs",
+    "test:instagram-live": "node tests/instagram-live.mjs",
     "ui": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "node tests/browser-smoke.mjs",
-    "check": "node --check mcp-server.js && node --check lib/mcp-store.js && node --check server.js && node --check lib/crawler.js && node --check lib/store.js && node --check public/app.js",
+    "check": "node --check mcp-server.js && node --check lib/mcp-store.js && node --check lib/instagram.js && node --check lib/instagram-data.js && node --check lib/instagram-session.js && node --check scripts/instagram-login.mjs && node --check server.js && node --check lib/crawler.js && node --check lib/store.js && node --check public/app.js",
     "install:browser": "playwright install chromium"
   },
   "dependencies": {

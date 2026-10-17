@@ -24,6 +24,37 @@ const fakeRunner = async (_config, { onLog, onPage, signal }) => {
   return 'succeeded';
 };
 
+test('Instagram MCP workflow persists replacement snapshots, typed data, analysis and recipes across clients', async () => {
+  const dir = temporary();
+  const post = { kind: 'instagram_post', shortcode: 'ABC123', url: 'https://www.instagram.com/p/ABC123/', username: 'sample', caption: '테스트 #사진', altText: '', postedAt: '2026-10-01T00:00:00.000Z', likes: 15, comments: null, views: null, mediaType: 'image', collaborators: ['partner'] };
+  const store = new McpStore(dir, { runner: async (config, { onPage, dataDir }) => {
+    assert.equal(config.actor, 'instagram'); assert.equal(dataDir, dir);
+    onPage({ rows: [post], replaceRows: true, instagram: { profile: { username: 'sample', followers: 100 }, latestVerified: false, stopReason: 'fewer_visible_posts' } });
+    onPage({ rows: [post], replaceRows: true });
+    return 'partial';
+  } });
+  const second = new McpStore(dir, { runner: async () => { throw new Error('Unexpected second worker'); } });
+  const { server } = createMcpServer({ store });
+  const client = new Client({ name: 'instagram-protocol-test', version: '1' });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await server.connect(st); await client.connect(ct);
+  try {
+    const detail = await call(client, 'fetch-actor-details', { actorId: 'instagram' }); assert.equal(detail.inputSchema.properties.maxPosts.maximum, 30);
+    const job = await call(client, 'analyze-instagram', { url: 'https://instagram.com/p/ABC123/', waitSeconds: 3 });
+    assert.equal(job.status, 'partial'); assert.equal(job.rowCount, 1);
+    assert.equal(second.getJob(job.id).instagram.profile.username, 'sample');
+    const rows = await call(client, 'get-dataset-items', { datasetId: job.id });
+    assert.equal(rows.items[0].likes, 15); assert.equal(rows.items[0].comments, null); assert.deepEqual(rows.items[0].collaborators, ['partner']);
+    const report = await call(client, 'get-instagram-analysis', { runId: job.id });
+    assert.equal(report.collectedPosts, 1); assert.equal(report.metrics.averageLikes, 15);
+    assert.equal(report.coverage.latestRequestedPostsVerified, false);
+    const recipe = await call(client, 'save-actor', { name: 'sample-ig', title: '계정', description: '', baseActor: 'instagram', input: { url: 'https://instagram.com/sample/', maxPosts: 20 } });
+    assert.equal(recipe.config.maxPosts, 20);
+    const session = await call(client, 'instagram-session', { action: 'status' }); assert.equal(session.sessionSaved, false);
+    const bad = await client.callTool({ name: 'analyze-instagram', arguments: { url: 'https://example.com/' } }); assert.equal(bad.isError, true);
+  } finally { await client.close(); await server.close(); await store.close(); await second.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('MCP tool discovery, actor recipes, runs, pagination, exports and schedules through the protocol', async () => {
   const dir = temporary();
   const store = new McpStore(dir, { runner: fakeRunner });
@@ -33,9 +64,9 @@ test('MCP tool discovery, actor recipes, runs, pagination, exports and schedules
   await server.connect(serverTransport); await client.connect(clientTransport);
   try {
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 16);
+    assert.equal(tools.tools.length, 19);
     assert.ok(tools.tools.some(t => t.name === 'call-actor' && t.inputSchema.properties.actorId));
-    const actors = await call(client, 'search-actors'); assert.equal(actors.total, 3);
+    const actors = await call(client, 'search-actors'); assert.equal(actors.total, 4);
     const info = await call(client, 'fetch-actor-details', { actorId: 'custom' });
     assert.ok(info.inputSchema.required.includes('rowSelector'));
     const actor = await call(client, 'save-actor', { name: 'my-articles', title: '내 기사 수집', description: '본문을 모읍니다', baseActor: 'text', input: { urls: ['https://example.com'], maxPages: 1 } });
@@ -104,7 +135,7 @@ test('real stdio subprocesses handshake, share saved actors, return tool errors 
       const client = new Client({ name, version: '1.0.0' });
       entries.push({ client, transport });
       await client.connect(transport);
-      assert.equal((await client.listTools()).tools.length, 16);
+      assert.equal((await client.listTools()).tools.length, 19);
     }
     const [codex, claude] = entries.map(e => e.client);
     await call(codex, 'save-actor', { name: 'shared-notes', title: '같이 쓰는 수집기', description: '두 클라이언트 공유', baseActor: 'text', input: { urls: ['https://example.com'] } });
