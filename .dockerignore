@@ -1,0 +1,7 @@
+node_modules
+data
+connections
+.git
+.env
+test-results
+qa-*.png

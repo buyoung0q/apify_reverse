@@ -1,0 +1,12 @@
+services:
+  pocket-crawler:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:4310:4310"
+    volumes:
+      - pocket-data:/app/data
+    shm_size: "1gb"
+    restart: unless-stopped
+volumes:
+  pocket-data:
